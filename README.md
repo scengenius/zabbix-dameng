@@ -1,8 +1,8 @@
-# Zabbix for Dameng
+# Zabbix with a Dameng DM8 Backend
 
 [简体中文](README.zh-CN.md) · [Upstream Zabbix](https://github.com/zabbix/zabbix)
 
-ScenGenius maintains this experimental fork of Zabbix 8.0.0. It lets Zabbix Server and the Web frontend/API use Dameng DM8 in native mode (`COMPATIBLE_MODE=0`) as their primary database for configuration, users, events and audit records.
+This project targets Xinchuang (IT application innovation) deployments that require a Chinese database. It enables Zabbix 8.0.0 Server and Web/API to use Dameng DM8 in native mode (`COMPATIBLE_MODE=0`) as Zabbix's primary database for monitoring configuration, users, events, and audit records. ScenGenius maintains this adaptation.
 
 ## What changed
 
@@ -17,7 +17,7 @@ Use the [Dameng setup guide](database/dameng/README.md) to build from source, ge
 
 ## Verified scope
 
-The integration baseline is Zabbix 8.0.0 with DM8 8.1.4.80 Pack29 (build 288894), Linux ARM64, unixODBC 2.3.11 and PHP 8.2 with PDO_ODBC. The lab checks cover fresh initialization, separate restricted database logins, the setup wizard, API operations, image byte round-trips, and collection through problem and recovery. Both DM8 and optional ClickHouse 26.4.4.38 passed history readback at the maximum UInt64 value.
+This adaptation is experimental. The integration baseline is Zabbix 8.0.0 with DM8 8.1.4.80 Pack29 (build 288894), Linux ARM64, unixODBC 2.3.11 and PHP 8.2 with PDO_ODBC. The lab checks cover fresh initialization, separate restricted database logins, the setup wizard, API operations, image byte round-trips, and collection through problem and recovery. Both DM8 and optional ClickHouse 26.4.4.38 passed history readback at the maximum UInt64 value.
 
 The Dameng build is for Zabbix Server. Use an upstream-supported backend for Zabbix Proxy. The current build requires the matching 8.0.0 schema and disables automatic DM8 schema upgrades. Other DM8 builds and platforms, production load, high availability, and in-place database upgrades need separate validation.
 

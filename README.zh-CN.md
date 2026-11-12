@@ -1,8 +1,8 @@
-# Zabbix 达梦原生适配
+# Zabbix 达梦 DM8 后端数据库适配
 
 [English](README.md) · [Zabbix 上游仓库](https://github.com/zabbix/zabbix)
 
-这是由数璟科技（ScenGenius）维护的 Zabbix 8.0.0 实验性分支。Zabbix Server 和 Web/API 可以使用达梦 DM8 原生模式（`COMPATIBLE_MODE=0`）作为主数据库，存储监控配置、用户、事件和审计记录。
+本项目面向信创环境中监控平台采用国产数据库的部署要求。数璟科技（ScenGenius）基于 Zabbix 8.0.0 进行适配，使 Zabbix Server 和 Web/API 可以使用原生模式（`COMPATIBLE_MODE=0`）的达梦 DM8 作为自身的主数据库，存储监控配置、用户、事件和审计记录。
 
 ## 改造内容
 
@@ -17,7 +17,7 @@
 
 ## 实测范围
 
-验证环境为 Zabbix 8.0.0、DM8 8.1.4.80 Pack29（build 288894）、Linux ARM64、unixODBC 2.3.11 和 PHP 8.2 PDO_ODBC。实验覆盖空库初始化、独立低权限账号、安装向导、API 操作、图标字节回读，以及采集到告警和恢复的链路。达梦直接存储历史和可选的 ClickHouse 26.4.4.38 均通过了 UInt64 最大值读回测试。
+当前适配处于实验验证阶段。验证环境为 Zabbix 8.0.0、DM8 8.1.4.80 Pack29（build 288894）、Linux ARM64、unixODBC 2.3.11 和 PHP 8.2 PDO_ODBC。实验覆盖空库初始化、独立低权限账号、安装向导、API 操作、图标字节回读，以及采集到告警和恢复的链路。达梦直接存储历史和可选的 ClickHouse 26.4.4.38 均通过了 UInt64 最大值读回测试。
 
 达梦后端用于 Zabbix Server。Proxy 继续使用上游支持的数据库。当前版本要求与 8.0.0 对应的 schema，并关闭达梦自动升级。其他 DM8 构建和平台、生产负载、高可用和存量达梦库就地升级均需独立验证。
 
