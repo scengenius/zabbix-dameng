@@ -7,4 +7,5 @@ SUBDIRS = \
 
 EXTRA_DIST = \
 	elasticsearch \
-	clickhouse
+	clickhouse \
+	dameng

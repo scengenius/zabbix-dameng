@@ -68,6 +68,10 @@ class DB {
 				case ZBX_DB_POSTGRESQL:
 					self::$dbBackend = new PostgresqlDbBackend();
 					break;
+
+				case ZBX_DB_DAMENG:
+					self::$dbBackend = new DamengDbBackend();
+					break;
 			}
 		}
 
@@ -320,7 +324,7 @@ class DB {
 		return $updated_values;
 	}
 
-	private static function checkValueTypes($tableSchema, &$values) {
+	private static function checkValueTypes($tableSchema, &$values, array &$lob_values) {
 		global $DB;
 
 		foreach ($values as $field => $value) {
@@ -387,6 +391,16 @@ class DB {
 
 						case ZBX_DB_POSTGRESQL:
 							$values[$field] = "'".pg_escape_bytea($DB['DB'], $values[$field])."'";
+							break;
+
+						case ZBX_DB_DAMENG:
+							if ($values[$field] === '') {
+								$values[$field] = 'EMPTY_BLOB()';
+							}
+							else {
+								$lob_values[] = $values[$field];
+								$values[$field] = '?';
+							}
 							break;
 					}
 				}
@@ -531,17 +545,18 @@ class DB {
 			$resultids = self::addIds($table, $values);
 		}
 
+		$lob_values = [];
 		foreach ($values as &$row) {
 			$row += $mandatory_fields;
 
-			self::checkValueTypes($table_schema, $row);
+			self::checkValueTypes($table_schema, $row, $lob_values);
 			self::uppercaseValues($table, $row);
 		}
 		unset($row);
 
 		$sql = self::getDbBackend()->createInsertQuery($table, array_keys(reset($values)), $values);
 
-		if (!DBexecute($sql)) {
+		if (!DBexecute($sql, $lob_values)) {
 			self::exception(self::DBEXECUTE_ERROR, _s('SQL statement execution has failed "%1$s".', $sql));
 		}
 
@@ -566,29 +581,31 @@ class DB {
 		$upd_requests = zbx_toArray($upd_requests);
 
 		foreach ($upd_requests as $upd_request) {
-			self::validateUpdValues($table_name, $table_schema, $upd_request);
+			$lob_values = [];
+			self::validateUpdValues($table_name, $table_schema, $upd_request, $lob_values);
 			self::validateUpdConditions($table_name, $table_schema, $upd_request);
 
 			if (self::hasCompositePk($table_schema)) {
-				self::updateByConditions($table_name, $upd_request);
+				self::updateByConditions($table_name, $upd_request, $lob_values);
 			}
 			elseif (count($upd_request['where']) == 1 && array_key_exists($table_schema['key'], $upd_request['where'])) {
-				self::updateByPkIds($table_name, $upd_request);
+				self::updateByPkIds($table_name, $upd_request, $lob_values);
 			}
 			else {
-				self::updateExistingRowsByPkIds($table_name, $upd_request, $table_schema['key']);
+				self::updateExistingRowsByPkIds($table_name, $upd_request, $table_schema['key'], $lob_values);
 			}
 		}
 	}
 
-	private static function validateUpdValues(string $table_name, array $table_schema, array &$upd_request): void {
+	private static function validateUpdValues(string $table_name, array $table_schema, array &$upd_request,
+			array &$lob_values): void {
 		if (!array_key_exists('values', $upd_request) || !$upd_request['values']) {
 			self::exception(self::DBEXECUTE_ERROR,
 				_s('Cannot perform update statement on table "%1$s" without values.', $table_name)
 			);
 		}
 
-		self::checkValueTypes($table_schema, $upd_request['values']);
+		self::checkValueTypes($table_schema, $upd_request['values'], $lob_values);
 		self::uppercaseValues($table_name, $upd_request['values']);
 	}
 
@@ -612,7 +629,7 @@ class DB {
 		unset($values);
 	}
 
-	private static function updateByConditions(string $table_name, array $upd_request): void {
+	private static function updateByConditions(string $table_name, array $upd_request, array $lob_values): void {
 		$sql_where = [];
 
 		foreach ($upd_request['where'] as $field => $values) {
@@ -623,12 +640,12 @@ class DB {
 			' SET '.self::getUpdSqlValues($upd_request).
 			' WHERE '.implode(' AND ', $sql_where);
 
-		if (!DBexecute($sql)) {
+		if (!DBexecute($sql, $lob_values)) {
 			self::exception(self::DBEXECUTE_ERROR, _s('SQL statement execution has failed "%1$s".', $sql));
 		}
 	}
 
-	private static function updateByPkIds(string $table_name, array $upd_request): void {
+	private static function updateByPkIds(string $table_name, array $upd_request, array $lob_values): void {
 		$sql_values = self::getUpdSqlValues($upd_request);
 		$pk_field_name = key($upd_request['where']);
 
@@ -638,19 +655,19 @@ class DB {
 			$chunkids[] = $id;
 
 			if (count($chunkids) == self::CHUNK_SIZE) {
-				self::updateByIdField($table_name, $sql_values, $pk_field_name, $chunkids);
+				self::updateByIdField($table_name, $sql_values, $pk_field_name, $chunkids, $lob_values);
 
 				$chunkids = [];
 			}
 		}
 
 		if ($chunkids) {
-			self::updateByIdField($table_name, $sql_values, $pk_field_name, $chunkids);
+			self::updateByIdField($table_name, $sql_values, $pk_field_name, $chunkids, $lob_values);
 		}
 	}
 
 	private static function updateExistingRowsByPkIds(string $table_name, array $upd_request,
-			string $pk_field_name): void {
+			string $pk_field_name, array $lob_values): void {
 		$options = [
 			'output' => [$pk_field_name],
 			'filter' => $upd_request['where'],
@@ -665,14 +682,14 @@ class DB {
 			$chunkids[] = $pk_row[$pk_field_name];
 
 			if (count($chunkids) == self::CHUNK_SIZE) {
-				self::updateByIdField($table_name, $sql_values, $pk_field_name, $chunkids);
+				self::updateByIdField($table_name, $sql_values, $pk_field_name, $chunkids, $lob_values);
 
 				$chunkids = [];
 			}
 		}
 
 		if ($chunkids) {
-			self::updateByIdField($table_name, $sql_values, $pk_field_name, $chunkids);
+			self::updateByIdField($table_name, $sql_values, $pk_field_name, $chunkids, $lob_values);
 		}
 	}
 
@@ -691,12 +708,12 @@ class DB {
 	}
 
 	private static function updateByIdField(string $table_name, string $sql_values, string $id_field_name,
-			array $ids): void {
+			array $ids, array $lob_values): void {
 		$sql = 'UPDATE '.$table_name.
 			' SET '.$sql_values.
 			' WHERE '.dbConditionId($id_field_name, $ids);
 
-		if (!DBexecute($sql)) {
+		if (!DBexecute($sql, $lob_values)) {
 			self::exception(self::DBEXECUTE_ERROR, _s('SQL statement execution has failed "%1$s".', $sql));
 		}
 	}

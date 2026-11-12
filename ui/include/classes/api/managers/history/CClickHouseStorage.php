@@ -602,7 +602,7 @@ class CClickHouseStorage {
 		]));
 
 		$result_raw = file_get_contents($this->url->getUrl(), false, stream_context_create($stream_context));
-		$result = $result_raw === false ? ['exception' => error_get_last()['message']] : json_decode($result_raw, true);
+		$result = $result_raw === false ? ['exception' => error_get_last()['message']] : json_decode($result_raw, true, 512, JSON_BIGINT_AS_STRING);
 		$http_code = 500;
 
 		if (PHP_VERSION_ID >= 80400) {

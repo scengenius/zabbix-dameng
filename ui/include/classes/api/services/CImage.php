@@ -150,8 +150,8 @@ class CImage extends CApiService {
 
 		// adding objects
 		if (!is_null($options['select_image'])) {
-			$dbImg = DBselect('SELECT i.imageid,i.image FROM images i WHERE '.dbConditionInt('i.imageid', $imageids));
-			while ($img = DBfetch($dbImg)) {
+			$dbImg = DBselectImages('i.imageid', dbConditionInt('i.imageid', $imageids));
+			while ($img = DBfetchImage($dbImg)) {
 				$result[$img['imageid']]['image'] = base64_encode($img['image']);
 			}
 		}

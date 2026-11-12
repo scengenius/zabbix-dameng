@@ -8,7 +8,7 @@ $DB['DATABASE']			= 'zabbix';
 $DB['USER']			= 'zabbix';
 $DB['PASSWORD']			= '';
 
-// Schema name. Used for PostgreSQL.
+// Schema name. Used for PostgreSQL and Dameng. For Dameng, DATABASE is the ODBC DSN.
 $DB['SCHEMA']			= '';
 
 // Used for TLS connection.

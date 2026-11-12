@@ -149,6 +149,11 @@ class CSetupWizard extends CForm {
 				)
 			];
 
+			if ($input['DB_TYPE'] === ZBX_DB_DAMENG) {
+				$input['DB_ENCRYPTION'] = false;
+				$input['DB_ENCRYPTION_ADVANCED'] = false;
+			}
+
 			if (!$input['DB_ENCRYPTION_ADVANCED']) {
 				$input['DB_KEY_FILE'] = '';
 				$input['DB_CERT_FILE'] = '';
@@ -159,7 +164,7 @@ class CSetupWizard extends CForm {
 				$input['DB_VERIFY_HOST'] = true;
 			}
 
-			if ($input['DB_TYPE'] !== ZBX_DB_POSTGRESQL) {
+			if (!in_array($input['DB_TYPE'], [ZBX_DB_POSTGRESQL, ZBX_DB_DAMENG], true)) {
 				$input['DB_SCHEMA'] = '';
 			}
 
@@ -666,8 +671,9 @@ class CSetupWizard extends CForm {
 				))->setWidth(ZBX_TEXTAREA_SMALL_WIDTH),
 				(new CDiv())->addClass(ZBX_STYLE_FORM_INPUT_MARGIN),
 				(new CSpan(_('0 - use default port')))->addClass(ZBX_STYLE_GREY)
-			])
-			->addRow(_('Database name'),
+			], 'db_port_row')
+			->addRow((new CLabel(_('Database name'), 'database'))
+					->setAttribute('data-dsn-label', _('ODBC DSN name')),
 				(new CTextBox('database', $this->getConfig('DB_DATABASE', 'zabbix')))
 					->setWidth(ZBX_TEXTAREA_SMALL_WIDTH)
 			)
@@ -1041,7 +1047,8 @@ class CSetupWizard extends CForm {
 				$db_port
 			)
 			->addRow(
-				(new CSpan(_('Database name')))->addClass(ZBX_STYLE_GREY),
+				(new CSpan($db_type === ZBX_DB_DAMENG ? _('ODBC DSN name') : _('Database name')))
+					->addClass(ZBX_STYLE_GREY),
 				$this->getConfig('DB_DATABASE')
 			)
 			->addRow(
@@ -1053,7 +1060,7 @@ class CSetupWizard extends CForm {
 				$db_password
 			);
 
-		if ($db_type === ZBX_DB_POSTGRESQL) {
+		if (in_array($db_type, [ZBX_DB_POSTGRESQL, ZBX_DB_DAMENG], true)) {
 			$table->addRow(
 				(new CSpan(_('Database schema')))->addClass(ZBX_STYLE_GREY),
 				$this->getConfig('DB_SCHEMA')

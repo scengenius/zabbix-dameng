@@ -62,6 +62,17 @@
 #	define ZBX_TYPE_SERIAL_SUFFIX_STR	""
 #endif
 
+#if defined(HAVE_DAMENG)
+#	define ZBX_TYPE_ID_STR			"bigint"
+#	define ZBX_TYPE_FLOAT_STR		"double precision"
+#	define ZBX_TYPE_UINT_STR		"decimal(20)"
+#	define ZBX_TYPE_LONGTEXT_STR		"clob"
+#	define ZBX_TYPE_BLOB_STR		"blob"
+#	define ZBX_TYPE_JSON_STR		"clob"
+#	define ZBX_TYPE_SERIAL_STR		"bigint"
+#	define ZBX_TYPE_SERIAL_SUFFIX_STR	"identity(1,1)"
+#endif
+
 #define ZBX_TYPE_INT_STR	"integer"
 #define ZBX_TYPE_CHAR_STR	"varchar"
 #define ZBX_TYPE_TEXT_STR	"text"
@@ -937,6 +948,10 @@ int	zbx_db_check_version_and_upgrade(zbx_ha_mode_t ha_mode)
 
 	if (SUCCEED != zbx_db_table_exists(dbversion_table_name))
 	{
+#if defined(HAVE_DAMENG)
+		zabbix_log(LOG_LEVEL_CRIT, "initialize Dameng schema before starting this Zabbix Server build");
+		goto out;
+#endif
 #ifndef HAVE_SQLITE3
 		zabbix_log(LOG_LEVEL_DEBUG, "%s() \"%s\" does not exist", __func__, dbversion_table_name);
 
@@ -1009,6 +1024,13 @@ int	zbx_db_check_version_and_upgrade(zbx_ha_mode_t ha_mode)
 #ifndef HAVE_SQLITE3
 	if (0 == total)
 		goto out;
+
+#if defined(HAVE_DAMENG)
+	zabbix_log(LOG_LEVEL_CRIT, "Dameng PoC requires an initialized schema matching this release;"
+			" automatic upgrade is disabled");
+	ret = FAIL;
+	goto out;
+#endif
 
 	if (0 != mandatory_num)
 	{

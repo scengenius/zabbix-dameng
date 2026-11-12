@@ -5,6 +5,8 @@ noinst_LIBRARIES = libzbxdb.a
 libzbxdb_a_SOURCES = \
 	dbconn.c \
 	dbconn.h \
+	dbdameng.c \
+	dbdameng.h \
 	dbmisc.c \
 	dbinsert.c \
 	dbversion.c \

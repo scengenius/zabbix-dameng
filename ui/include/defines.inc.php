@@ -216,6 +216,7 @@ define('PASSWD_CHECK_SIMPLE', 0x08);
 
 define('ZBX_DB_MYSQL',		'MYSQL');
 define('ZBX_DB_POSTGRESQL',	'POSTGRESQL');
+define('ZBX_DB_DAMENG',		'DAMENG');
 
 // Max duration of APM traces (in seconds). Used for searching the related spans by the APM Trace API.
 define('APM_TRACE_MAX_DURATION',	3600);

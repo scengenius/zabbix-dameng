@@ -1,0 +1,1 @@
+ALTER TABLE zabbix.history_uint MODIFY SETTING non_replicated_deduplication_window=1024;

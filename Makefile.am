@@ -11,6 +11,7 @@ SUBDIRS = \
 
 EXTRA_DIST = \
 	README.md \
+	README.zh-CN.md \
 	bin \
 	build \
 	ui \

@@ -43,7 +43,8 @@ function DBconnect(&$error) {
 
 	$db_types = [
 		ZBX_DB_MYSQL => MysqlDbBackend::class,
-		ZBX_DB_POSTGRESQL => PostgresqlDbBackend::class
+		ZBX_DB_POSTGRESQL => PostgresqlDbBackend::class,
+		ZBX_DB_DAMENG => DamengDbBackend::class
 	];
 
 	if (!array_key_exists($DB['TYPE'], $db_types)) {
@@ -88,6 +89,10 @@ function DBclose(): bool {
 			case ZBX_DB_POSTGRESQL:
 				$result = pg_close($DB['DB']);
 				break;
+
+			case ZBX_DB_DAMENG:
+				$result = true; // PDO closes when the connection reference is removed.
+				break;
 		}
 	}
 	unset($DB['DB']);
@@ -109,6 +114,16 @@ function DBstart(): bool {
 
 	if (!isset($DB['DB']) || empty($DB['DB'])) {
 		return false;
+	}
+
+	if ($DB['TYPE'] === ZBX_DB_DAMENG) {
+		$result = DBDamengTransaction('beginTransaction');
+
+		if (!$result) {
+			$DB['TRANSACTIONS'] = 0;
+		}
+
+		return $result;
 	}
 
 	return DBexecute('BEGIN');
@@ -150,11 +165,34 @@ function DBend($doCommit = true) {
 }
 
 function DBcommit(): bool {
-	return DBexecute('COMMIT');
+	global $DB;
+
+	return $DB['TYPE'] === ZBX_DB_DAMENG ? DBDamengTransaction('commit') : DBexecute('COMMIT');
 }
 
 function DBrollback(): bool {
-	return DBexecute('ROLLBACK');
+	global $DB;
+
+	return $DB['TYPE'] === ZBX_DB_DAMENG ? DBDamengTransaction('rollBack') : DBexecute('ROLLBACK');
+}
+
+function DBDamengTransaction(string $method): bool {
+	global $DB;
+
+	try {
+		return $DB['DB']->$method();
+	}
+	catch (PDOException $e) {
+		$DB['TRANSACTION_NO_FAILED_SQLS'] = false;
+		trigger_error('Dameng transaction failed. '.DamengDbBackend::diagnostic($e), E_USER_WARNING);
+
+		// The outcome of a failed commit can be unknown. Discard this connection.
+		if ($method !== 'beginTransaction') {
+			DBclose();
+		}
+
+		return false;
+	}
 }
 
 /**
@@ -208,6 +246,16 @@ function DBselect(string $query, ?int $limit = null, int $offset = 0) {
 			}
 
 			break;
+
+		case ZBX_DB_DAMENG:
+			try {
+				$result = $DB['DB']->query(DamengDbBackend::quoteReservedIdentifiers($query));
+			}
+			catch (PDOException $e) {
+				trigger_error('Dameng query failed. '.DamengDbBackend::diagnostic($e), E_USER_WARNING);
+			}
+
+			break;
 	}
 
 	if (!$result) {
@@ -223,11 +271,12 @@ function DBselect(string $query, ?int $limit = null, int $offset = 0) {
 }
 
 /**
- * @param $query
+ * @param string $query
+ * @param array  $lob_values  Binary values for Dameng positional parameters.
  *
  * @return bool
  */
-function DBexecute($query): bool {
+function DBexecute($query, array $lob_values = []): bool {
 	global $DB;
 
 	if (!array_key_exists('DB', $DB) || $DB['DB'] === null) {
@@ -257,6 +306,29 @@ function DBexecute($query): bool {
 			}
 
 			break;
+
+		case ZBX_DB_DAMENG:
+			try {
+				$sql = DamengDbBackend::quoteReservedIdentifiers($query);
+
+				if (!$lob_values) {
+					$result = $DB['DB']->exec($sql) !== false;
+				}
+				else {
+					$statement = $DB['DB']->prepare($sql);
+
+					foreach ($lob_values as $index => $value) {
+						$statement->bindValue($index + 1, $value, PDO::PARAM_LOB);
+					}
+
+					$result = $statement->execute();
+				}
+			}
+			catch (PDOException $e) {
+				trigger_error('Dameng statement failed. '.DamengDbBackend::diagnostic($e), E_USER_WARNING);
+			}
+
+			break;
 	}
 
 	if (!$result) {
@@ -276,10 +348,11 @@ function DBexecute($query): bool {
  *
  * @param mixed $cursor        A DB-specific resource returned by DBselect or DBexecute.
  * @param bool  $convertNulls  Convert all null values to string zeros.
+ * @param array $blob_fields   Binary result columns requiring Dameng ODBC hex decoding.
  *
  * @return array|bool
  */
-function DBfetch($cursor, $convertNulls = true) {
+function DBfetch($cursor, $convertNulls = true, array $blob_fields = []) {
 	global $DB;
 
 	if (!array_key_exists('DB', $DB) || $DB['DB'] === null || $cursor === false) {
@@ -314,6 +387,28 @@ function DBfetch($cursor, $convertNulls = true) {
 			}
 
 			break;
+
+		case ZBX_DB_DAMENG:
+			try {
+				$result = $cursor->fetch(PDO::FETCH_ASSOC);
+
+				if ($result === false) {
+					$cursor->closeCursor();
+				}
+				else {
+					foreach ($blob_fields as $field) {
+						if (isset($result[$field])) {
+							$result[$field] = DamengDbBackend::decodeBlob($result[$field]);
+						}
+					}
+				}
+			}
+			catch (PDOException $e) {
+				$DB['TRANSACTION_NO_FAILED_SQLS'] = false;
+				trigger_error('Dameng fetch failed. '.DamengDbBackend::diagnostic($e), E_USER_WARNING);
+			}
+
+			break;
 	}
 
 	if ($result) {
@@ -331,6 +426,36 @@ function DBfetch($cursor, $convertNulls = true) {
 	return false;
 }
 
+/**
+ * Select image metadata and payload, deferring large Dameng BLOBs to bounded reads.
+ */
+function DBselectImages(string $fields, string $where) {
+	global $DB;
+
+	$image_fields = $DB['TYPE'] === ZBX_DB_DAMENG
+		? ',CASE WHEN DBMS_LOB.GETLENGTH(i.image)<=524288 THEN i.image ELSE EMPTY_BLOB() END AS image'
+			.',DBMS_LOB.GETLENGTH(i.image) AS image_length'
+		: ',i.image';
+
+	return DBselect('SELECT '.$fields.$image_fields.' FROM images i WHERE '.$where);
+}
+
+function DBfetchImage($cursor) {
+	global $DB;
+
+	$row = DBfetch($cursor, true, ['image']);
+
+	if ($row && $DB['TYPE'] === ZBX_DB_DAMENG) {
+		if (strlen($row['image']) !== (int) $row['image_length']) {
+			$row['image'] = DamengDbBackend::readLargeImage($row['imageid']);
+		}
+
+		unset($row['image_length']);
+	}
+
+	return $row;
+}
+
 function zbx_sql_mod($x, $y) {
 	return 'MOD('.$x.','.$y.')';
 }
@@ -339,7 +464,8 @@ function get_dbid($table, $field) {
 	// PGSQL on transaction failure on all queries returns false..
 	global $DB;
 
-	if ($DB['TYPE'] == ZBX_DB_POSTGRESQL && $DB['TRANSACTIONS'] && !$DB['TRANSACTION_NO_FAILED_SQLS']) {
+	if (in_array($DB['TYPE'], [ZBX_DB_POSTGRESQL, ZBX_DB_DAMENG], true) && $DB['TRANSACTIONS']
+			&& !$DB['TRANSACTION_NO_FAILED_SQLS']) {
 		return 0;
 	}
 
@@ -394,6 +520,8 @@ function get_dbid($table, $field) {
 }
 
 function zbx_db_search($table, $options, &$sql_parts) {
+	global $DB;
+
 	list($table, $tableShort) = explode(' ', $table);
 
 	$tableSchema = DB::getSchema($table);
@@ -423,13 +551,21 @@ function zbx_db_search($table, $options, &$sql_parts) {
 		$fieldSearch = [];
 		foreach ($patterns as $pattern) {
 			// escaping parameter that is about to be used in LIKE statement
-			$pattern = mb_strtoupper(strtr($pattern, ['!' => '!!', '%' => '!%', '_' => '!_']));
+			$pattern = strtr($pattern, ['!' => '!!', '%' => '!%', '_' => '!_']);
+
+			if ($DB['TYPE'] !== ZBX_DB_DAMENG) {
+				$pattern = mb_strtoupper($pattern);
+			}
 
 			$pattern = !$options['searchWildcardsEnabled']
 				? $start.$pattern.'%'
 				: str_replace('*', '%', $pattern);
 
 			$pattern = zbx_dbstr($pattern);
+
+			if ($DB['TYPE'] === ZBX_DB_DAMENG) {
+				$pattern = 'UPPER('.$pattern.')';
+			}
 
 			$fieldSearch[] = DB::uppercaseField($field, $table, $tableShort).$exclude.' LIKE '.$pattern." ESCAPE '!'";
 		}
@@ -694,6 +830,11 @@ function zbx_dbstr($var) {
 			}
 			return "'".pg_escape_string($DB['DB'], $var)."'";
 
+		case ZBX_DB_DAMENG:
+			$quote = static fn($value): string => "'".str_replace("'", "''", (string) $value)."'";
+
+			return is_array($var) ? array_map($quote, $var) : $quote($var);
+
 		default:
 			return false;
 	}
@@ -715,6 +856,7 @@ function zbx_dbcast_2bigint($field) {
 
 	switch ($DB['TYPE']) {
 		case ZBX_DB_POSTGRESQL:
+		case ZBX_DB_DAMENG:
 			return 'CAST('.$field.' AS BIGINT)';
 
 		case ZBX_DB_MYSQL:
@@ -741,6 +883,7 @@ function dbCast2Text($field) {
 
 	switch ($DB['TYPE']) {
 		case ZBX_DB_POSTGRESQL:
+		case ZBX_DB_DAMENG:
 			return 'CAST('.$field.' AS TEXT)';
 
 		case ZBX_DB_MYSQL:

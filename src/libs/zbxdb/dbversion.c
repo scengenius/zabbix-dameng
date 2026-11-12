@@ -19,7 +19,7 @@
 #include "zbxjson.h"
 #include "zbxtypes.h"
 
-#if defined(HAVE_POSTGRESQL)
+#if defined(HAVE_POSTGRESQL) || defined(HAVE_DAMENG)
 #	include "zbxstr.h"
 #endif
 
@@ -255,6 +255,25 @@ void	zbx_dbconn_extract_version_info(zbx_dbconn_t *db, struct zbx_db_version_inf
 	version_info->flag = zbx_db_version_check(version_info->database, version_info->current_version,
 			version_info->min_version, version_info->max_version, version_info->min_supported_version);
 
+#elif defined(HAVE_DAMENG)
+	SQLCHAR	server_version[128];
+	unsigned int	major, minor, patch;
+
+	version_info->database = "Dameng";
+	version_info->friendly_min_supported_version = "8.0";
+	version_info->flag = DB_VERSION_FAILED_TO_RETRIEVE;
+
+	if (SQL_SUCCEEDED(SQLGetInfo(db->conn, SQL_DBMS_VER, server_version, sizeof(server_version), NULL)))
+	{
+		version_info->friendly_current_version = zbx_strdup(NULL, (const char *)server_version);
+
+		if (3 == sscanf((const char *)server_version, "%u.%u.%u", &major, &minor, &patch))
+		{
+			version = major * 10000 + minor * 100 + patch;
+			version_info->current_version = version;
+			version_info->flag = (8 == major ? DB_VERSION_SUPPORTED : DB_VERSION_NOT_SUPPORTED_ERROR);
+		}
+	}
 #else
 	ZBX_UNUSED(db);
 	zabbix_log(LOG_LEVEL_DEBUG, "In %s()", __func__);

@@ -1495,6 +1495,9 @@ AM_CONDITIONAL([DBSCHEMA], [test -d create])
 
 AM_CONDITIONAL([USE_TESTS], [(test -f m4/conf_tests.m4) && (test "x$server" = "xyes" || test "x$proxy" = "xyes" || test "x$agent" = "xyes")])
 
+AC_ARG_WITH([dameng], AS_HELP_STRING([--with-dameng], [Use the experimental Dameng ODBC database backend]),
+	[want_dameng="$withval"], [want_dameng=no])
+
 have_db="no"
 have_unixodbc="no"
 have_web_monitoring="no"
@@ -1551,6 +1554,19 @@ if test "x$server" = "xyes" || test "x$proxy" = "xyes"; then
 		fi
 	fi
 
+	if test "x$want_dameng" = "xyes"; then
+		if test "x$have_db" != "xno"; then
+			AC_MSG_ERROR([You can configure for only one database.])
+		fi
+		if test "x$server" != "xyes" || test "x$proxy" = "xyes"; then
+			AC_MSG_ERROR([The Dameng PoC only supports the server build.])
+		fi
+		AC_CHECK_HEADERS([sql.h sqlext.h], [], [AC_MSG_ERROR([unixODBC headers required])])
+		AC_CHECK_LIB([odbc], [SQLAllocHandle], [DAMENG_LIBS=-lodbc], [AC_MSG_ERROR([unixODBC library required])])
+		AC_DEFINE([HAVE_DAMENG], [1], [Define to 1 if the Dameng database backend is enabled])
+		have_db="Dameng ODBC"
+	fi
+
 	dnl Checking for SQLite3 support
 	AX_LIB_SQLITE3()
 	if test "x$want_sqlite3" = "xyes"; then
@@ -1590,7 +1606,7 @@ if test "x$server" = "xyes" || test "x$proxy" = "xyes"; then
 	AC_MSG_CHECKING(for Zabbix server/proxy database selection)
 	if test "x$have_db" = "xno"; then
 		AC_MSG_RESULT(error)
-		AC_MSG_ERROR([No database selected for Zabbix server/proxy. Use --with-mysql or --with-postgresql or --with-sqlite3.])
+		AC_MSG_ERROR([No database selected for Zabbix server/proxy. Use --with-mysql or --with-postgresql or --with-dameng or --with-sqlite3.])
 	else
 		AC_MSG_RESULT(ok)
 	fi
@@ -1605,7 +1621,7 @@ if test "x$server" = "xyes" || test "x$proxy" = "xyes"; then
 
 	DB_CFLAGS="$MYSQL_CFLAGS $POSTGRESQL_CFLAGS $SQLITE3_CPPFLAGS"
 	DB_LDFLAGS="$MYSQL_LDFLAGS $POSTGRESQL_LDFLAGS $SQLITE3_LDFLAGS"
-	DB_LIBS="$MYSQL_LIBS $POSTGRESQL_LIBS $SQLITE3_LIBS"
+	DB_LIBS="$MYSQL_LIBS $POSTGRESQL_LIBS $SQLITE3_LIBS $DAMENG_LIBS"
 
 	AC_SUBST(DB_CFLAGS)
 	AC_SUBST(DB_LDFLAGS)

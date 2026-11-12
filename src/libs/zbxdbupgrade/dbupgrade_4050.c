@@ -76,7 +76,7 @@ static int	DBpatch_4050007(void)
 
 static int	DBpatch_4050011(void)
 {
-#if defined(HAVE_IBM_DB2) || defined(HAVE_POSTGRESQL)
+#if defined(HAVE_IBM_DB2) || defined(HAVE_POSTGRESQL) || defined(HAVE_DAMENG)
 	const char *cast_value_str = "bigint";
 #elif defined(HAVE_MYSQL)
 	const char *cast_value_str = "unsigned";

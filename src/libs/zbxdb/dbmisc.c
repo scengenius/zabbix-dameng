@@ -67,6 +67,9 @@ static int	db_is_threadsafe(void)
 	return (0 != mysql_thread_safe() ? SUCCEED : FAIL);
 #elif defined(HAVE_POSTGRESQL)
 	return (0 != PQisthreadsafe() ? SUCCEED : FAIL);
+#elif defined(HAVE_DAMENG)
+	/* Each backend connection owns its own ODBC handles. */
+	return SUCCEED;
 #else
 	return (0 != sqlite3_threadsafe() ? SUCCEED : FAIL);
 #endif

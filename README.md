@@ -1,25 +1,26 @@
-![Zabbix logo](misc/images/docs/zabbix_logo.svg?raw=true)
+# Zabbix for Dameng
 
-An enterprise-class, open-source distributed monitoring solution that’s designed to monitor the performance and availability of network devices, servers, services, and other IT resources.
-Zabbix is a flexible solution that can monitor anything from a simple, standalone application to a large-scale environment, with features including:
+[简体中文](README.zh-CN.md) · [Upstream Zabbix](https://github.com/zabbix/zabbix)
 
-- **Resource discovery:** Discover network entities, server resources, and onboard/offboard devices. Use out-of-the-box integrations (templates) to monitor anything form a low-level device to a SAAS service.
-- **Metric acquisition:** Use an agent or agent-less approach for metric acquisition from any source – devices, sensors, operating systems, virtualization platforms, container platforms like Docker, Kubernetes, cloud infrastructures, databases, webpages, Java ecosystems, application servers, API endpoints, business applications, and many more.
-- **Root cause analysis and problem detection:** Count on high-performance, real-time problem detection that correlates both existing and incoming problems and performs root cause analyses.
-- **Incidents, alerts, and notifications:** Receive an alert when an issue is triggered (proactively or post-mortem) in the ecosystem. Use multiple messaging channels (including Slack, JIRA, Microsoft Teams, email or text messages) to get notified about the different types of events occurring in your environment.
-- **“Single pane of glass” overview:** Visualize collected data and monitoring events in graphs, lists, geomaps, and network topology maps.
-- **Multitenancy and distributed monitoring:** Enjoy the convenience of one monitoring solution for multiple data centers, departments, and organizations, and monitor remote locations behind firewalls with remote command execution capability.
-- **Unparalleled flexibility:** Adapt Zabbix to your needs and utilize built-in functionalities, including the ability to stream metrics and events over HTTP, reporting, auditing, security, service SLA calculations, and many more.
+ScenGenius maintains this experimental fork of Zabbix 8.0.0. It lets Zabbix Server and the Web frontend/API use Dameng DM8 in native mode (`COMPATIBLE_MODE=0`) as their primary database for configuration, users, events and audit records.
 
-## Get started
+## What changed
 
-- [Get Zabbix](https://www.zabbix.com/download)
-- [Installation manual](https://www.zabbix.com/documentation/current/en/manual/installation)
+- **Server** adds the `--with-dameng` build option and a unixODBC backend for the Dameng ODBC driver. It handles transactions, reconnects, SQL dialect differences and per-session schema selection.
+- **Web and API** add a `DAMENG` backend through PHP PDO_ODBC. The setup wizard accepts an ODBC data source name (DSN) and schema. The adapter handles queries, transactions and image data. Template export and trigger dependency filtering skip empty queries that fail with restricted DM8 accounts.
+- **Database initialization** converts the 8.0.0 PostgreSQL schema, seed data and icons into native DM8 SQL. The scripts verify tables, indexes, foreign keys and triggers and generate grants for separate Server and Web logins.
+- **Optional ClickHouse history** waits for asynchronous inserts to complete before acknowledging success and enables insert deduplication. The Web API preserves unsigned 64-bit integers when decoding ClickHouse JSON.
 
-## Documentation
+## Build and install
 
-Zabbix documentation is available at [zabbix.com/documentation](https://www.zabbix.com/documentation/current/en/)
+Use the [Dameng setup guide](database/dameng/README.md) to build from source, generate and install the schema, register the ODBC DSN, and configure both applications. It also covers optional ClickHouse history. Obtain the DM8 server and matching ODBC client libraries from Dameng.
+
+## Verified scope
+
+The integration baseline is Zabbix 8.0.0 with DM8 8.1.4.80 Pack29 (build 288894), Linux ARM64, unixODBC 2.3.11 and PHP 8.2 with PDO_ODBC. The lab checks cover fresh initialization, separate restricted database logins, the setup wizard, API operations, image byte round-trips, and collection through problem and recovery. Both DM8 and optional ClickHouse 26.4.4.38 passed history readback at the maximum UInt64 value.
+
+The Dameng build is for Zabbix Server. Use an upstream-supported backend for Zabbix Proxy. The current build requires the matching 8.0.0 schema and disables automatic DM8 schema upgrades. Other DM8 builds and platforms, production load, high availability, and in-place database upgrades need separate validation.
 
 ## License
 
-Zabbix is distributed under [AGPL-3.0-only](COPYING)
+This fork retains the upstream [GNU Affero General Public License v3.0 only](COPYING). The [Zabbix 8.0 manual](https://www.zabbix.com/documentation/8.0/en/) covers general operation and upstream components.

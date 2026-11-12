@@ -43,7 +43,8 @@ class CConfigFile {
 
 	private static $supported_db_types = [
 		ZBX_DB_MYSQL => true,
-		ZBX_DB_POSTGRESQL => true
+		ZBX_DB_POSTGRESQL => true,
+		ZBX_DB_DAMENG => true
 	];
 
 	public $configFile = null;

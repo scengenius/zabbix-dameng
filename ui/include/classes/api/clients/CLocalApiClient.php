@@ -95,7 +95,12 @@ class CLocalApiClient extends CApiClient {
 
 			// if no transaction has been started yet - start one
 			if ($DB['TRANSACTIONS'] == 0) {
-				DBstart();
+				$started = DBstart();
+
+				if ($DB['TYPE'] === ZBX_DB_DAMENG && !$started) {
+					throw new DBException(_('Database error occurred.'), DB::DBEXECUTE_ERROR);
+				}
+
 				$newTransaction = true;
 			}
 

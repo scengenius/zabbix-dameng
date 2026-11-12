@@ -21,6 +21,10 @@
 #include "zbxstr.h"
 #include "zbxtime.h"
 
+#if defined(HAVE_DAMENG)
+#	include "dbdameng.h"
+#endif
+
 #if defined(HAVE_POSTGRESQL)
 #	define ZBX_PG_READ_ONLY	"25006"
 #	define ZBX_PG_UNIQUE_VIOLATION	"23505"
@@ -62,8 +66,6 @@ static zbx_mutex_t		db_sqlite_access = ZBX_MUTEX_NULL;
 static int	dbconn_execute(zbx_dbconn_t *db, const char *fmt, ...);
 static zbx_db_result_t	dbconn_select(zbx_dbconn_t *db, const char *fmt, ...);
 static int	dbconn_open(zbx_dbconn_t *db);
-static void	dbconn_errlog(zbx_dbconn_t *db, zbx_err_codes_t zbx_errno, int db_errno, const char *db_error,
-		const char *context);
 
 /*
  * Private API
@@ -185,7 +187,7 @@ static char	*db_replace_nonprintable_chars(const char *sql, char **sql_printable
 	return *sql_printable;
 }
 
-static void	dbconn_errlog(zbx_dbconn_t *db, zbx_err_codes_t zbx_errno, int db_errno, const char *db_error,
+void	dbconn_errlog(zbx_dbconn_t *db, zbx_err_codes_t zbx_errno, int db_errno, const char *db_error,
 		const char *context)
 {
 	char	*s, *sql_printable = NULL;
@@ -349,6 +351,8 @@ void	dbconn_close(zbx_dbconn_t *db)
 		PQfinish(db->conn);
 		db->conn = NULL;
 	}
+#elif defined(HAVE_DAMENG)
+	dbdameng_close(db);
 #elif defined(HAVE_SQLITE3)
 	if (NULL != db->conn)
 	{
@@ -756,6 +760,8 @@ static int	dbconn_open(zbx_dbconn_t *db)
 	if (0 < (ret = dbconn_execute(db, "set bytea_output=escape")))
 		ret = ZBX_DB_OK;
 out:
+#elif defined(HAVE_DAMENG)
+	ret = dbdameng_open(db);
 #elif defined(HAVE_SQLITE3)
 #ifdef HAVE_FUNCTION_SQLITE3_OPEN_V2
 	if (SQLITE_OK != sqlite3_open_v2(db->config->dbname, &db->conn, SQLITE_OPEN_READWRITE |
@@ -973,6 +979,8 @@ static int	dbconn_vexecute(zbx_dbconn_t *db, const char *fmt, va_list args)
 		ret = atoi(PQcmdTuples(result));
 
 	PQclear(result);
+#elif defined(HAVE_DAMENG)
+	ret = dbdameng_execute(db, sql);
 #elif defined(HAVE_SQLITE3)
 	if (0 == db->txn_level)
 		zbx_mutex_lock(*db->sqlite_access);
@@ -1078,6 +1086,10 @@ static int	dbconn_begin(zbx_dbconn_t *db)
 
 #if defined(HAVE_MYSQL) || defined(HAVE_POSTGRESQL)
 	rc = dbconn_execute(db, "begin;");
+#elif defined(HAVE_DAMENG)
+	rc = dbdameng_begin(db);
+	if (ZBX_DB_FAIL == rc)
+		db->txn_error = ZBX_DB_FAIL;
 #elif defined(HAVE_SQLITE3)
 	zbx_mutex_lock(*db->sqlite_access);
 	rc = dbconn_execute(db, "begin;");
@@ -1122,7 +1134,11 @@ static int	dbconn_commit(zbx_dbconn_t *db)
 	if (ZBX_DB_OK != db->txn_error)
 		return ZBX_DB_FAIL; /* commit called on failed transaction */
 
+#if defined(HAVE_DAMENG)
+	rc = dbdameng_end(db, SQL_COMMIT);
+#else
 	rc = dbconn_execute(db, "commit;");
+#endif
 
 #ifdef HAVE_SQLITE3
 	zbx_mutex_unlock(*db->sqlite_access);
@@ -1170,7 +1186,11 @@ static int	dbconn_rollback(zbx_dbconn_t *db)
 	db->txn_error = ZBX_DB_OK;
 	db->mode = DBCONN_MODE_DEFAULT;
 
+#if defined(HAVE_DAMENG)
+	rc = dbdameng_end(db, SQL_ROLLBACK);
+#else
 	rc = dbconn_execute(db, "rollback;");
+#endif
 
 #if defined(HAVE_SQLITE3)
 	zbx_mutex_unlock(*db->sqlite_access);
@@ -1287,6 +1307,8 @@ static zbx_db_result_t	dbconn_vselect(zbx_dbconn_t *db, const char *fmt, va_list
 	}
 	else	/* init rownum */
 		result->row_num = PQntuples(result->pg_result);
+#elif defined(HAVE_DAMENG)
+	result = dbdameng_select(db, sql);
 #elif defined(HAVE_SQLITE3)
 	if (0 == db->txn_level)
 		zbx_mutex_lock(*db->sqlite_access);
@@ -1869,6 +1891,10 @@ zbx_db_row_t	__zbx_attr_weak zbx_db_fetch(zbx_db_result_t result)
 	result->cursor++;
 
 	return result->values;
+#elif defined(HAVE_DAMENG)
+	if ((zbx_db_result_t)ZBX_DB_DOWN == result)
+		return NULL;
+	return dbdameng_fetch(result);
 #elif defined(HAVE_SQLITE3)
 	/* EOF */
 	if (result->curow >= result->nrow)
@@ -1909,6 +1935,8 @@ void	__zbx_attr_weak zbx_db_free_result(zbx_db_result_t result)
 
 	PQclear(result->pg_result);
 	zbx_free(result);
+#elif defined(HAVE_DAMENG)
+	dbdameng_free_result(result);
 #elif defined(HAVE_SQLITE3)
 	if (NULL == result)
 		return;
@@ -1967,6 +1995,8 @@ int	zbx_db_get_row_num(zbx_db_result_t result)
 	return result->row_num;
 #elif defined(HAVE_MYSQL)
 	return (int)mysql_num_rows(result->result);
+#elif defined(HAVE_DAMENG)
+	return dbdameng_row_count(result);
 #else
 	ZBX_UNUSED(result);
 	return 0;
@@ -2226,6 +2256,9 @@ int	zbx_dbconn_table_exists(zbx_dbconn_t *db, const char *table_name)
 			" where table_name='%s'"
 				" and table_schema='%s'",
 			table_name_esc, zbx_dbconn_get_schema_esc(db));
+#elif defined(HAVE_DAMENG)
+	result = zbx_dbconn_select(db, "select 1 from all_tables where owner=SYS_CONTEXT('USERENV','CURRENT_SCHEMA')"
+			" and table_name=upper('%s')", table_name_esc);
 #elif defined(HAVE_SQLITE3)
 	result = zbx_dbconn_select(db,
 			"select 1"
@@ -2251,13 +2284,13 @@ int	zbx_dbconn_table_exists(zbx_dbconn_t *db, const char *table_name)
  ******************************************************************************/
 int	zbx_dbconn_field_exists(zbx_dbconn_t *db, const char *table_name, const char *field_name)
 {
-#if (defined(HAVE_MYSQL) || defined(HAVE_POSTGRESQL) || defined(HAVE_SQLITE3))
+#if defined(HAVE_MYSQL) || defined(HAVE_POSTGRESQL) || defined(HAVE_SQLITE3) || defined(HAVE_DAMENG)
 	zbx_db_result_t	result;
 #endif
 #if defined(HAVE_MYSQL)
 	char		*field_name_esc;
 	int		ret;
-#elif defined(HAVE_POSTGRESQL)
+#elif defined(HAVE_POSTGRESQL) || defined(HAVE_DAMENG)
 	char		*table_name_esc, *field_name_esc;
 	int		ret;
 #elif defined(HAVE_SQLITE3)
@@ -2295,6 +2328,17 @@ int	zbx_dbconn_field_exists(zbx_dbconn_t *db, const char *table_name, const char
 	ret = (NULL == zbx_db_fetch(result) ? FAIL : SUCCEED);
 
 	zbx_db_free_result(result);
+#elif defined(HAVE_DAMENG)
+	table_name_esc = zbx_dbconn_dyn_escape_string(db, table_name);
+	field_name_esc = zbx_dbconn_dyn_escape_string(db, field_name);
+
+	result = zbx_dbconn_select(db, "select 1 from all_tab_columns where owner=SYS_CONTEXT('USERENV','CURRENT_SCHEMA')"
+			" and table_name=upper('%s') and column_name=upper('%s')",
+			table_name_esc, field_name_esc);
+	ret = (NULL == zbx_db_fetch(result) ? FAIL : SUCCEED);
+	zbx_db_free_result(result);
+	zbx_free(field_name_esc);
+	zbx_free(table_name_esc);
 #elif defined(HAVE_SQLITE3)
 	table_name_esc = zbx_dbconn_dyn_escape_string(db, table_name);
 
@@ -2344,6 +2388,10 @@ int	zbx_dbconn_trigger_exists(zbx_dbconn_t *db, const char *table_name, const ch
 			" and trigger_name='%s'"
 			" and trigger_schema='%s'",
 			table_name_esc, trigger_name_esc, zbx_dbconn_get_schema_esc(db));
+#elif defined(HAVE_DAMENG)
+	result = zbx_dbconn_select(db, "select 1 from all_triggers where table_owner=SYS_CONTEXT('USERENV','CURRENT_SCHEMA')"
+			" and table_name=upper('%s') and trigger_name=upper('%s')",
+			table_name_esc, trigger_name_esc);
 #endif
 	ret = (NULL == zbx_db_fetch(result) ? FAIL : SUCCEED);
 
@@ -2382,6 +2430,10 @@ int	zbx_dbconn_index_exists(zbx_dbconn_t *db, const char *table_name, const char
 				" and indexname='%s'"
 				" and schemaname='%s'",
 			table_name_esc, index_name_esc, zbx_dbconn_get_schema_esc(db));
+#elif defined(HAVE_DAMENG)
+	result = zbx_dbconn_select(db, "select 1 from all_indexes where table_owner=SYS_CONTEXT('USERENV','CURRENT_SCHEMA')"
+			" and table_name=upper('%s') and index_name=upper('%s')",
+			table_name_esc, index_name_esc);
 #endif
 
 	ret = (NULL == zbx_db_fetch(result) ? FAIL : SUCCEED);
@@ -2417,6 +2469,12 @@ int	zbx_dbconn_pk_exists(zbx_dbconn_t *db, const char *table_name)
 				" and constraint_type='PRIMARY KEY'"
 				" and constraint_schema='%s'",
 			table_name, zbx_dbconn_get_schema_esc(db));
+#elif defined(HAVE_DAMENG)
+	char	*table_name_esc = zbx_dbconn_dyn_escape_string(db, table_name);
+
+	result = zbx_dbconn_select(db, "select 1 from all_constraints where owner=SYS_CONTEXT('USERENV','CURRENT_SCHEMA')"
+			" and table_name=upper('%s') and constraint_type='P'", table_name_esc);
+	zbx_free(table_name_esc);
 #endif
 	ret = (NULL == zbx_db_fetch(result) ? FAIL : SUCCEED);
 

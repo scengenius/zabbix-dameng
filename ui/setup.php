@@ -34,7 +34,7 @@ catch (Exception $e) {
 // VAR	TYPE	OPTIONAL	FLAGS	VALIDATION	EXCEPTION
 $fields = [
 	'default_lang' =>                       [T_ZBX_STR, O_OPT, null,	null,				null],
-	'type' =>                               [T_ZBX_STR, O_OPT, null,	IN('"'.ZBX_DB_MYSQL.'","'.ZBX_DB_POSTGRESQL.'"'), null],
+	'type' =>                               [T_ZBX_STR, O_OPT, null,	IN('"'.ZBX_DB_MYSQL.'","'.ZBX_DB_POSTGRESQL.'","'.ZBX_DB_DAMENG.'"'), null],
 	'server' =>                             [T_ZBX_STR, O_OPT, null,	null,				null],
 	'port' =>                               [T_ZBX_INT, O_OPT, null,	BETWEEN(ZBX_MIN_PORT_NUMBER, ZBX_MAX_PORT_NUMBER), null, _('Database port')],
 	'database' =>                           [T_ZBX_STR, O_OPT, null,	NOT_EMPTY,			null, _('Database name')],

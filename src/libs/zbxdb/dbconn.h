@@ -27,6 +27,9 @@
 #	include "mysqld_error.h"
 #elif defined(HAVE_POSTGRESQL)
 #	include <libpq-fe.h>
+#elif defined(HAVE_DAMENG)
+#	include <sql.h>
+#	include <sqlext.h>
 #elif defined(HAVE_SQLITE3)
 #	include <sqlite3.h>
 #	include <zbxmutexs.h>
@@ -82,12 +85,18 @@ struct zbx_dbconn
 #elif defined(HAVE_POSTGRESQL)
 	PGconn			*conn;
 	char			pg_escape_backslash;
+#elif defined(HAVE_DAMENG)
+	SQLHENV			dm_env;
+	SQLHDBC			conn;
+	int			dm_connected;
 #elif defined(HAVE_SQLITE3)
 	sqlite3			*conn;
 	zbx_mutex_t		*sqlite_access;
 #endif
 };
 
+void	dbconn_errlog(zbx_dbconn_t *db, zbx_err_codes_t zbx_errno, int db_errno, const char *db_error,
+		const char *context);
 int	dbconn_init(char **error);
 void	dbconn_deinit(void);
 

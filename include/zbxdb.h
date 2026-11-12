@@ -305,6 +305,9 @@ void	zbx_db_version_info_clear(struct zbx_db_version_info_t *version_info);
 #elif defined(HAVE_POSTGRESQL)
 #	define ZBX_DB_TIMESTAMP()	"cast(extract(epoch from now()) as int)"
 #	define ZBX_DB_CHAR_LENGTH(str)	"char_length(" #str ")"
+#elif defined(HAVE_DAMENG)
+#	define ZBX_DB_TIMESTAMP()	"datediff(second,timestamp '1970-01-01 00:00:00',sys_extract_utc(systimestamp))"
+#	define ZBX_DB_CHAR_LENGTH(str)	"length(" #str ")"
 #else
 #	define ZBX_DB_TIMESTAMP()	"cast(strftime('%s', 'now') as integer)"
 #	define ZBX_DB_CHAR_LENGTH(str)	"length(" #str ")"

@@ -1010,23 +1010,25 @@ class CTrigger extends CTriggerGeneral {
 				}
 			} while ($triggerIds);
 
-			// Fetch trigger IDs for triggers that are disabled, have disabled items or disabled item hosts.
-			$dbResult = DBSelect(
-				'SELECT t.triggerid'.
-				' FROM triggers t,functions f,items i,hosts h'.
-				' WHERE t.triggerid=f.triggerid'.
-				' AND f.itemid=i.itemid'.
-				' AND i.hostid=h.hostid'.
-				' AND ('.
-				'i.status='.ITEM_STATUS_DISABLED.
-				' OR h.status='.HOST_STATUS_NOT_MONITORED.
-				' OR t.status='.TRIGGER_STATUS_DISABLED.
-				')'.
-				' AND '.dbConditionInt('t.triggerid', $allUpTriggerIds)
-			);
-			while ($row = DBfetch($dbResult)) {
-				$resultTriggerId = $row['triggerid'];
-				$disabledTriggerIds[$resultTriggerId] = $resultTriggerId;
+			if ($allUpTriggerIds) {
+				// Fetch trigger IDs for triggers that are disabled, have disabled items or disabled item hosts.
+				$dbResult = DBSelect(
+					'SELECT t.triggerid'.
+					' FROM triggers t,functions f,items i,hosts h'.
+					' WHERE t.triggerid=f.triggerid'.
+					' AND f.itemid=i.itemid'.
+					' AND i.hostid=h.hostid'.
+					' AND ('.
+					'i.status='.ITEM_STATUS_DISABLED.
+					' OR h.status='.HOST_STATUS_NOT_MONITORED.
+					' OR t.status='.TRIGGER_STATUS_DISABLED.
+					')'.
+					' AND '.dbConditionInt('t.triggerid', $allUpTriggerIds)
+				);
+				while ($row = DBfetch($dbResult)) {
+					$resultTriggerId = $row['triggerid'];
+					$disabledTriggerIds[$resultTriggerId] = $resultTriggerId;
+				}
 			}
 
 			// Now process all mapped dependencies and unset any disabled "up" triggers so they do not participate in

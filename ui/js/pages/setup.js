@@ -15,6 +15,7 @@
 
 const ZBX_DB_MYSQL		= 'MYSQL';
 const ZBX_DB_POSTGRESQL	= 'POSTGRESQL';
+const ZBX_DB_DAMENG		= 'DAMENG';
 
 const DB_STORE_CREDS_VAULT_HASHICORP	= 1;
 const DB_STORE_CREDS_VAULT_CYBERARK		= 2;
@@ -87,6 +88,12 @@ const view = new class {
 
 		hintbox.style.display = db_type === ZBX_DB_POSTGRESQL ? '' : 'none';
 
+		const database_label = document.querySelector('label[for="database"]');
+		database_label.dataset.defaultLabel ??= database_label.textContent;
+		database_label.textContent = db_type === ZBX_DB_DAMENG
+			? database_label.dataset.dsnLabel
+			: database_label.dataset.defaultLabel;
+
 		const encryption_enabled = tls_encryption.checked;
 		const encryption_supported = (db_type === ZBX_DB_MYSQL || db_type === ZBX_DB_POSTGRESQL);
 		const encryption_allowed = (host !== ''
@@ -107,7 +114,9 @@ const view = new class {
 		}
 
 		const rows = {
-			'db_schema_row': db_type === ZBX_DB_POSTGRESQL,
+			'db_host_row': db_type !== ZBX_DB_DAMENG,
+			'db_port_row': db_type !== ZBX_DB_DAMENG,
+			'db_schema_row': db_type === ZBX_DB_POSTGRESQL || db_type === ZBX_DB_DAMENG,
 			'db_encryption_row': encryption_supported,
 			'db_verify_host': encryption_supported && encryption_allowed && encryption_enabled,
 			'db_keyfile_row': encryption_customizable,

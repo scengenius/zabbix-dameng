@@ -953,6 +953,10 @@ class CConfigurationExport {
 	 * @return array
 	 */
 	protected function prepareDiscoveryRules(array &$items, bool $is_lld_rule_prototype = false): void {
+		if (!$items) {
+			return;
+		}
+
 		$templateids = [];
 
 		foreach ($items as &$item) {

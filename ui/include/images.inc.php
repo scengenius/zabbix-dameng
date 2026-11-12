@@ -31,7 +31,7 @@ function get_image_by_imageid($imageid) {
 	static $images = [];
 
 	if (!isset($images[$imageid])) {
-		$row = DBfetch(DBselect('SELECT i.* FROM images i WHERE i.imageid='.zbx_dbstr($imageid)));
+		$row = DBfetchImage(DBselectImages('i.imageid,i.imagetype,i.name', 'i.imageid='.zbx_dbstr($imageid)));
 		$images[$imageid] = $row;
 	}
 	return $images[$imageid];
